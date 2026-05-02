@@ -11,9 +11,13 @@ Usage:
 
 import argparse
 import sys
+import os
+
+# Allow imports from the project root regardless of CWD
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lab import PromptInjectionLab, MODELS, RUNS_PER_PAYLOAD, build_payloads
-from report import generate_report
+from scripts.report import generate_report
 
 
 def main():

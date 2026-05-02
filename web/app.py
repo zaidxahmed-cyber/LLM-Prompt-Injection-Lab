@@ -1,11 +1,15 @@
 """
 Flask web dashboard for the LLM Prompt Injection Lab.
-Run with: python app.py
+Run with: python web/app.py
 Then open: http://localhost:5000
 """
 
 import sys
+import os
 import threading
+
+# Allow imports from the project root regardless of CWD
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import queue
 import uuid
 from flask import Flask, render_template, jsonify, request, Response, stream_with_context
@@ -14,7 +18,7 @@ from lab import (
     PromptInjectionLab, OllamaClient, ResultsDB,
     build_payloads, MODELS, DB_PATH,
 )
-from report import generate_report
+from scripts.report import generate_report
 
 app = Flask(__name__)
 
