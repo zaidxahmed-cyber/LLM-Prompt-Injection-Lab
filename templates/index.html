@@ -675,29 +675,29 @@
 
         <!-- Stat cards -->
         <div class="stat-grid" id="statGrid">
-          <div class="glass tilt stat-card c-cyan bracketed">
+          <div class="glass tilt stat-card c-cyan">
             <div class="s-icon" style="background:var(--cyan-dim)">🎯</div>
-            <div class="s-val" id="sv-total" style="color:var(--cyan)">—</div>
+            <div class="s-val" id="sv-total" style="color:var(--cyan)">0</div>
             <div class="s-lbl">Total Runs</div>
           </div>
-          <div class="glass tilt stat-card c-red bracketed">
+          <div class="glass tilt stat-card c-red">
             <div class="s-icon" style="background:var(--red-dim)">💀</div>
-            <div class="s-val" id="sv-rate">—</div>
+            <div class="s-val" id="sv-rate">0%</div>
             <div class="s-lbl">Attack Rate</div>
           </div>
           <div class="glass tilt stat-card c-red">
             <div class="s-icon" style="background:var(--red-dim)">⚡</div>
-            <div class="s-val" id="sv-success" style="color:var(--red)">—</div>
+            <div class="s-val" id="sv-success" style="color:var(--red)">0</div>
             <div class="s-lbl">Successful Attacks</div>
           </div>
           <div class="glass tilt stat-card c-purple">
             <div class="s-icon" style="background:var(--purple-dim)">🤖</div>
-            <div class="s-val" id="sv-models" style="color:var(--purple)">—</div>
+            <div class="s-val" id="sv-models" style="color:var(--purple)">0</div>
             <div class="s-lbl">Models Tested</div>
           </div>
           <div class="glass tilt stat-card c-green">
             <div class="s-icon" style="background:var(--green-dim)">🛡</div>
-            <div class="s-val" id="sv-defended" style="color:var(--green)">—</div>
+            <div class="s-val" id="sv-defended" style="color:var(--green)">0</div>
             <div class="s-lbl">Defended</div>
           </div>
         </div>
@@ -1409,6 +1409,10 @@ document.getElementById('outputModal').addEventListener('click', e => { if (e.ta
 checkOllama();
 loadDashboard();
 setInterval(checkOllama, 15000);
+// Always refresh stats every 5s so sidebar count and dashboard stay current
+setInterval(() => {
+  if (!pollInterval) loadDashboard(); // only if run-polling isn't already doing it
+}, 5000);
 </script>
 </body>
 </html>
