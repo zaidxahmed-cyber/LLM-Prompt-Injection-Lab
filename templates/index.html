@@ -302,7 +302,11 @@
     <div class="topbar">
       <span class="topbar-title" id="topbarTitle">Dashboard</span>
       <span class="topbar-badge">OWASP LLM01:2025</span>
-      <span style="margin-left:auto; font-size:0.72rem; color:var(--muted)">
+      <span id="liveBadge" style="display:none;margin-left:auto;display:none;align-items:center;gap:6px;font-size:0.72rem;padding:3px 10px;border-radius:999px;background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.3)">
+        <span style="width:7px;height:7px;border-radius:50%;background:#ef4444;display:inline-block;animation:pulse 1s infinite"></span>
+        LIVE
+      </span>
+      <span style="margin-left:auto; font-size:0.72rem; color:var(--muted)" id="footerNote">
         For educational / portfolio use only
       </span>
     </div>
@@ -439,6 +443,7 @@
 // ── State ──
 let modelChart = null, typeChart = null;
 let activeTab = 'dashboard';
+let pollInterval = null;
 let chartColors = {
   high: '#ef4444', mid: '#f97316', low: '#22c55e', accent: '#00d4ff',
 };
@@ -623,13 +628,16 @@ async function startRun() {
   });
   const { run_id } = await resp.json();
 
+  startPolling();
+
   const es = new EventSource(`/api/run/${run_id}/stream`);
   es.onmessage = (e) => {
     if (e.data === '__DONE__') {
       es.close();
+      stopPolling();
       btn.disabled = false; btn.innerHTML = '▶ &nbsp;Start Attack Run';
       badge.textContent = 'Done'; badge.className = 'run-status-badge done';
-      terminal.textContent += '\n[✓] Run complete. Open Dashboard to see results.';
+      terminal.textContent += '\n[✓] Run complete. Dashboard updated.';
       return;
     }
     const line = e.data.replace(/\\n/g, '\n');
@@ -638,6 +646,7 @@ async function startRun() {
   };
   es.onerror = () => {
     es.close();
+    stopPolling();
     btn.disabled = false; btn.innerHTML = '▶ &nbsp;Start Attack Run';
     badge.textContent = 'Error'; badge.className = 'run-status-badge error';
   };
@@ -753,6 +762,31 @@ function showModal(name, prompt, output) {
 }
 function closeModal() { document.getElementById('outputModal').classList.remove('open'); }
 document.getElementById('outputModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+// ── Live polling ──
+function startPolling() {
+  const badge = document.getElementById('liveBadge');
+  const note  = document.getElementById('footerNote');
+  badge.style.display = 'flex';
+  note.style.display  = 'none';
+
+  pollInterval = setInterval(() => {
+    loadDashboard();
+    if (activeTab === 'results') loadResults();
+  }, 2000);
+}
+
+function stopPolling() {
+  clearInterval(pollInterval);
+  pollInterval = null;
+  const badge = document.getElementById('liveBadge');
+  const note  = document.getElementById('footerNote');
+  badge.style.display = 'none';
+  note.style.display  = 'inline';
+  // Final refresh to capture last results
+  loadDashboard();
+  if (activeTab === 'results') loadResults();
+}
 
 // ── Init ──
 checkOllama();
