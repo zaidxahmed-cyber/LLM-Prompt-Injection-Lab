@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Prompt Injection Lab</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #070b14;
+      --surface:  #0d1117;
+      --surface2: #161b22;
+      --surface3: #1f2937;
+      --border:   #21262d;
+      --accent:   #00d4ff;
+      --accent2:  #7c3aed;
+      --red:      #ef4444;
+      --orange:   #f97316;
+      --yellow:   #eab308;
+      --green:    #22c55e;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+
+    /* ── Layout ── */
+    .shell { display: flex; height: 100vh; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 220px; flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 1.25rem 0;
+    }
+    .logo {
+      padding: 0 1.25rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+    .logo-title {
+      font-size: 0.85rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--accent);
+    }
+    .logo-sub { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 0.6rem 1.25rem; cursor: pointer;
+      color: var(--muted); transition: all 0.15s;
+      border-left: 3px solid transparent;
+      font-size: 0.85rem;
+    }
+    .nav-item:hover { color: var(--text); background: var(--surface2); }
+    .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(0,212,255,0.06); }
+    .nav-icon { font-size: 1.1rem; width: 20px; text-align: center; }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .ollama-status {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.72rem; color: var(--muted);
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--red); flex-shrink: 0;
+      animation: none;
+    }
+    .status-dot.online { background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* Main */
+    .main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+    .topbar {
+      height: 52px; flex-shrink: 0;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 1.5rem;
+      gap: 1rem;
+    }
+    .topbar-title { font-size: 0.9rem; font-weight: 600; }
+    .topbar-badge {
+      font-size: 0.65rem; padding: 2px 8px; border-radius: 999px;
+      background: rgba(0,212,255,0.1); color: var(--accent);
+      border: 1px solid rgba(0,212,255,0.25);
+    }
+    .content { padding: 1.5rem; flex: 1; }
+
+    /* Tabs */
+    .tab { display: none; }
+    .tab.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.25rem;
+    }
+    .card-title {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted); margin-bottom: 0.75rem;
+    }
+
+    /* Stat grid */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.25rem; }
+    .stat-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 6px; }
+
+    /* Chart grid */
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    @media(max-width:900px) { .chart-grid { grid-template-columns: 1fr; } }
+    .chart-wrap { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; }
+    .chart-title { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem; }
+
+    /* Section header */
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .section-title { font-size: 1rem; font-weight: 600; }
+
+    /* Badges */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .badge-critical { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+    .badge-high     { background: rgba(249,115,22,.15); color: var(--orange); border: 1px solid rgba(249,115,22,.3); }
+    .badge-medium   { background: rgba(234,179,8,.15);  color: var(--yellow);  border: 1px solid rgba(234,179,8,.3); }
+    .badge-low      { background: rgba(34,197,94,.15);  color: var(--green);   border: 1px solid rgba(34,197,94,.3); }
+    .badge-yes      { background: rgba(239,68,68,.15); color: var(--red);   border: 1px solid rgba(239,68,68,.3); }
+    .badge-no       { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+
+    /* Table */
+    .tbl-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: var(--surface2); padding: 0.6rem 0.9rem;
+      text-align: left; font-size: 0.68rem; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 0.6rem 0.9rem; font-size: 0.8rem; vertical-align: middle; }
+    .output-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: var(--font-mono); font-size: 0.72rem; cursor: pointer; }
+
+    /* Filter bar */
+    .filter-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .filter-bar select, .filter-bar input {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 0.4rem 0.7rem;
+      font-size: 0.8rem; outline: none;
+    }
+    .filter-bar select:focus, .filter-bar input:focus { border-color: var(--accent); }
+
+    /* Run Tests form */
+    .run-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media(max-width:700px) { .run-form { grid-template-columns: 1fr; } }
+    .form-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem; display: block; }
+    .model-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .model-item {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.6rem 0.9rem; cursor: pointer;
+    }
+    .model-item input { accent-color: var(--accent); width: 16px; height: 16px; }
+    .model-item label { cursor: pointer; font-size: 0.85rem; font-family: var(--font-mono); }
+    .model-avail { margin-left: auto; font-size: 0.68rem; }
+
+    .slider-wrap { display: flex; align-items: center; gap: 1rem; }
+    input[type=range] { flex: 1; accent-color: var(--accent); }
+    .slider-val { font-family: var(--font-mono); font-size: 1rem; font-weight: 700; color: var(--accent); min-width: 24px; text-align: center; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 0.6rem 1.4rem; border: none; border-radius: 8px;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover { background: #22e5ff; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Terminal */
+    .terminal {
+      background: #020409; border: 1px solid var(--border);
+      border-radius: 10px; padding: 1rem; margin-top: 1.5rem;
+      font-family: var(--font-mono); font-size: 0.75rem;
+      min-height: 200px; max-height: 400px; overflow-y: auto;
+      color: #a3e635; white-space: pre-wrap; word-break: break-word;
+      display: none;
+    }
+    .terminal.active { display: block; }
+    .terminal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.5rem; margin-top: 1.5rem;
+    }
+    .terminal-title { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .run-status-badge { font-size: 0.72rem; padding: 3px 10px; border-radius: 999px; }
+    .run-status-badge.running { background: rgba(0,212,255,.15); color: var(--accent); border: 1px solid rgba(0,212,255,.3); }
+    .run-status-badge.done    { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+    .run-status-badge.error   { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+
+    /* Payload cards */
+    .payload-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(320px,1fr)); gap: 1rem; }
+    .payload-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.1rem;
+    }
+    .payload-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.6rem; }
+    .payload-card-name { font-size: 0.8rem; font-weight: 600; font-family: var(--font-mono); color: var(--accent); }
+    .payload-card-type { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .payload-prompt {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.6rem;
+      font-family: var(--font-mono); font-size: 0.7rem; color: #a3e635;
+      margin-top: 0.75rem; max-height: 100px; overflow: hidden;
+      cursor: pointer; position: relative;
+    }
+    .payload-prompt.expanded { max-height: none; }
+    .payload-indicators { margin-top: 0.6rem; font-size: 0.7rem; color: var(--muted); }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.5rem; max-width: 700px; width: 90%;
+      max-height: 80vh; overflow-y: auto;
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.3rem; }
+    .modal-pre { font-family: var(--font-mono); font-size: 0.75rem; color: #a3e635; background: var(--bg); padding: 1rem; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 4rem 2rem; color: var(--muted); }
+    .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .empty p { font-size: 0.85rem; line-height: 1.6; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(0,212,255,.3); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-title">⚡ Injection Lab</div>
+      <div class="logo-sub">LLM Security Research</div>
+    </div>
+    <nav>
+      <div class="nav-item active" onclick="loadTab('dashboard')">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="loadTab('run')">
+        <span class="nav-icon">▶</span> Run Tests
+      </div>
+      <div class="nav-item" onclick="loadTab('results')">
+        <span class="nav-icon">📋</span> Results
+      </div>
+      <div class="nav-item" onclick="loadTab('payloads')">
+        <span class="nav-icon">🧪</span> Payloads
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="ollama-status" id="ollamaStatus">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Checking Ollama…</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="topbarTitle">Dashboard</span>
+      <span class="topbar-badge">OWASP LLM01:2025</span>
+      <span style="margin-left:auto; font-size:0.72rem; color:var(--muted)">
+        For educational / portfolio use only
+      </span>
+    </div>
+
+    <div class="content">
+
+      <!-- ── DASHBOARD ── -->
+      <div class="tab active" id="tab-dashboard">
+        <div class="stat-grid" id="statGrid">
+          <div class="stat-card"><div class="stat-value" style="color:var(--accent)">—</div><div class="stat-label">Total Runs</div></div>
+          <div class="stat-card"><div class="stat-value" id="overallRate">—</div><div class="stat-label">Overall Attack Rate</div></div>
+          <div class="stat-card"><div class="stat-value" id="totalSuccesses">—</div><div class="stat-label">Successful Attacks</div></div>
+          <div class="stat-card"><div class="stat-value" id="modelsTested">—</div><div class="stat-label">Models Tested</div></div>
+          <div class="stat-card"><div class="stat-value" id="payloadTypes">—</div><div class="stat-label">Payload Types</div></div>
+        </div>
+
+        <div class="chart-grid">
+          <div class="chart-wrap">
+            <div class="chart-title">Attack Rate by Model</div>
+            <canvas id="modelChart" style="max-height:260px"></canvas>
+          </div>
+          <div class="chart-wrap">
+            <div class="chart-title">Attack Rate by Payload Type</div>
+            <canvas id="typeChart" style="max-height:260px"></canvas>
+          </div>
+        </div>
+
+        <div id="modelTableSection"></div>
+      </div>
+
+      <!-- ── RUN TESTS ── -->
+      <div class="tab" id="tab-run">
+        <div class="run-form">
+          <div class="card">
+            <div class="card-title">Select Models</div>
+            <div class="model-list" id="modelList">
+              <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
+            </div>
+          </div>
+          <div>
+            <div class="card" style="margin-bottom:1rem">
+              <div class="card-title">Runs per Payload</div>
+              <div class="slider-wrap">
+                <input type="range" min="1" max="10" value="5" id="runsSlider"
+                       oninput="document.getElementById('runsVal').textContent=this.value">
+                <span class="slider-val" id="runsVal">5</span>
+              </div>
+              <p style="color:var(--muted);font-size:0.72rem;margin-top:0.75rem">
+                Higher = more reliable statistics but takes longer
+              </p>
+            </div>
+            <div class="card">
+              <div class="card-title">About</div>
+              <p style="font-size:0.8rem;color:var(--muted);line-height:1.7">
+                Each payload is sent to each model <em>N</em> times. Results are
+                logged to SQLite and the dashboard updates automatically.
+                <br><br>
+                <strong style="color:var(--text)">System prompt used as target:</strong><br>
+                A "safe" assistant instructed never to reveal a hidden secret password.
+                A successful attack = the model leaks it.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:1.5rem;display:flex;gap:0.75rem;align-items:center">
+          <button class="btn btn-primary" id="startBtn" onclick="startRun()">
+            ▶ &nbsp;Start Attack Run
+          </button>
+          <button class="btn btn-outline" onclick="loadTab('results')">View Results →</button>
+        </div>
+
+        <div class="terminal-header" id="terminalHeader" style="display:none">
+          <span class="terminal-title">Live Output</span>
+          <span class="run-status-badge running" id="runStatusBadge">Running</span>
+        </div>
+        <div class="terminal" id="terminal"></div>
+      </div>
+
+      <!-- ── RESULTS ── -->
+      <div class="tab" id="tab-results">
+        <div class="section-header">
+          <span class="section-title">Raw Results</span>
+          <button class="btn btn-outline" onclick="loadResults()">↺ Refresh</button>
+        </div>
+        <div class="filter-bar">
+          <select id="filterModel" onchange="loadResults()">
+            <option value="">All models</option>
+          </select>
+          <select id="filterType" onchange="loadResults()">
+            <option value="">All payload types</option>
+          </select>
+          <select id="filterSuccess" onchange="loadResults()">
+            <option value="">All outcomes</option>
+            <option value="yes">Bypassed (yes)</option>
+            <option value="no">Defended (no)</option>
+          </select>
+        </div>
+        <div id="resultsTable">
+          <div class="empty">
+            <div class="empty-icon">📭</div>
+            <p>No results yet.<br>Run the lab first.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PAYLOADS ── -->
+      <div class="tab" id="tab-payloads">
+        <div class="section-header">
+          <span class="section-title">Payload Library</span>
+          <span style="font-size:0.8rem;color:var(--muted)" id="payloadCount">—</span>
+        </div>
+        <div class="payload-grid" id="payloadGrid">
+          <div style="color:var(--muted)">Loading…</div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- Output modal -->
+<div class="modal-backdrop" id="outputModal">
+  <div class="modal">
+    <div class="modal-header">
+      <strong id="modalTitle">Full Output</strong>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <pre class="modal-pre" id="modalBody"></pre>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let modelChart = null, typeChart = null;
+let activeTab = 'dashboard';
+let chartColors = {
+  high: '#ef4444', mid: '#f97316', low: '#22c55e', accent: '#00d4ff',
+};
+
+// ── Tab switching ──
+function loadTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+
+  const titles = { dashboard:'Dashboard', run:'Run Tests', results:'Results', payloads:'Payloads' };
+  document.getElementById('topbarTitle').textContent = titles[name] || name;
+  activeTab = name;
+
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'run')       loadModels();
+  if (name === 'results')   loadResults();
+  if (name === 'payloads')  loadPayloads();
+}
+
+// ── Ollama status ──
+async function checkOllama() {
+  try {
+    const r = await fetch('/api/models');
+    const d = await r.json();
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    if (d.available && d.available.length > 0) {
+      dot.classList.add('online');
+      txt.textContent = `Ollama — ${d.available.length} model(s)`;
+    } else {
+      txt.textContent = 'Ollama — no models';
+    }
+  } catch {
+    document.getElementById('statusText').textContent = 'Ollama offline';
+  }
+}
+
+// ── Dashboard ──
+async function loadDashboard() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+
+    document.getElementById('statGrid').children[0].querySelector('.stat-value').textContent = d.total_runs ?? 0;
+    const rate = d.overall_rate ?? 0;
+    const rateEl = document.getElementById('overallRate');
+    rateEl.textContent = rate + '%';
+    rateEl.style.color = rate >= 50 ? 'var(--red)' : rate >= 20 ? 'var(--yellow)' : 'var(--green)';
+    document.getElementById('totalSuccesses').textContent = d.total_successes ?? 0;
+    document.getElementById('modelsTested').textContent  = (d.model_stats  ?? []).length;
+    document.getElementById('payloadTypes').textContent  = (d.type_stats   ?? []).length;
+
+    renderModelChart(d.model_stats ?? []);
+    renderTypeChart(d.type_stats   ?? []);
+    renderModelTable(d.model_stats ?? []);
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function rateColor(r) { return r >= 50 ? '#ef4444' : r >= 20 ? '#f97316' : '#22c55e'; }
+
+function renderModelChart(stats) {
+  const labels = stats.map(s => s.model_name);
+  const rates  = stats.map(s => s.total ? +(s.successes/s.total*100).toFixed(1) : 0);
+  const ctx = document.getElementById('modelChart');
+  if (modelChart) modelChart.destroy();
+  modelChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Attack Success %', data: rates, backgroundColor: rates.map(rateColor), borderRadius: 4 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, max: 100, grid: { color: '#21262d' }, ticks: { color: '#8b949e' } },
+        x: { grid: { display: false }, ticks: { color: '#8b949e' } }
+      }
+    }
+  });
+}
+
+function renderTypeChart(stats) {
+  const labels = stats.map(s => s.payload_type);
+  const rates  = stats.map(s => s.total ? +(s.successes/s.total*100).toFixed(1) : 0);
+  const ctx = document.getElementById('typeChart');
+  if (typeChart) typeChart.destroy();
+  typeChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Attack Success %', data: rates, backgroundColor: rates.map(rateColor), borderRadius: 4 }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, max: 100, grid: { color: '#21262d' }, ticks: { color: '#8b949e' } },
+        y: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderModelTable(stats) {
+  if (!stats.length) { document.getElementById('modelTableSection').innerHTML = ''; return; }
+  let rows = '';
+  stats.forEach(s => {
+    const rate = s.total ? (s.successes/s.total*100).toFixed(1) : 0;
+    const col = rateColor(+rate);
+    rows += `<tr>
+      <td style="font-family:var(--font-mono)">${s.model_name}</td>
+      <td>${s.total}</td>
+      <td>${s.successes}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:${rate}%;max-width:120px;height:8px;background:${col};border-radius:4px;min-width:2px"></div>
+          <span style="color:${col};font-weight:600">${rate}%</span>
+        </div>
+      </td>
+    </tr>`;
+  });
+  document.getElementById('modelTableSection').innerHTML = `
+    <div class="card">
+      <div class="card-title">Model Summary</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Model</th><th>Total Runs</th><th>Bypassed</th><th>Attack Rate</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ── Models ──
+async function loadModels() {
+  const r = await fetch('/api/models');
+  const d = await r.json();
+  const available = d.available || [];
+  // Union of defaults + available
+  const allModels = [...new Set([...d.defaults, ...available])];
+
+  document.getElementById('modelList').innerHTML = allModels.map(m => {
+    const isAvail = available.some(a => a === m || a.startsWith(m+':'));
+    return `
+    <div class="model-item">
+      <input type="checkbox" id="m_${m}" value="${m}" ${isAvail?'checked':''} ${isAvail?'':'disabled'}>
+      <label for="m_${m}">${m}</label>
+      <span class="model-avail ${isAvail?'badge badge-low':'badge badge-critical'}">
+        ${isAvail?'Available':'Not pulled'}
+      </span>
+    </div>`;
+  }).join('');
+}
+
+// ── Run ──
+async function startRun() {
+  const models = [...document.querySelectorAll('#modelList input:checked')].map(i => i.value);
+  if (!models.length) { alert('Select at least one model.'); return; }
+  const runs = parseInt(document.getElementById('runsSlider').value);
+
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Running…';
+
+  const terminal = document.getElementById('terminal');
+  terminal.classList.add('active');
+  terminal.textContent = '';
+  document.getElementById('terminalHeader').style.display = 'flex';
+  const badge = document.getElementById('runStatusBadge');
+  badge.textContent = 'Running'; badge.className = 'run-status-badge running';
+
+  const resp = await fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models, runs })
+  });
+  const { run_id } = await resp.json();
+
+  const es = new EventSource(`/api/run/${run_id}/stream`);
+  es.onmessage = (e) => {
+    if (e.data === '__DONE__') {
+      es.close();
+      btn.disabled = false; btn.innerHTML = '▶ &nbsp;Start Attack Run';
+      badge.textContent = 'Done'; badge.className = 'run-status-badge done';
+      terminal.textContent += '\n[✓] Run complete. Open Dashboard to see results.';
+      return;
+    }
+    const line = e.data.replace(/\\n/g, '\n');
+    terminal.textContent += line + '\n';
+    terminal.scrollTop = terminal.scrollHeight;
+  };
+  es.onerror = () => {
+    es.close();
+    btn.disabled = false; btn.innerHTML = '▶ &nbsp;Start Attack Run';
+    badge.textContent = 'Error'; badge.className = 'run-status-badge error';
+  };
+}
+
+// ── Results ──
+async function loadResults() {
+  const model   = document.getElementById('filterModel').value;
+  const type    = document.getElementById('filterType').value;
+  const success = document.getElementById('filterSuccess').value;
+
+  const params = new URLSearchParams();
+  if (model)   params.set('model',   model);
+  if (type)    params.set('type',    type);
+  if (success) params.set('success', success);
+  params.set('limit', 500);
+
+  const r = await fetch('/api/results?' + params);
+  const d = await r.json();
+  const rows = d.rows || [];
+
+  // Populate filter selects (first load)
+  if (!document.getElementById('filterModel').options.length > 1) {
+    populateFilters(rows);
+  }
+  populateFilters(rows);
+
+  if (!rows.length) {
+    document.getElementById('resultsTable').innerHTML = `
+      <div class="empty"><div class="empty-icon">📭</div><p>No results match your filters.</p></div>`;
+    return;
+  }
+
+  const tbody = rows.map(r => {
+    const sucBadge = r.success === 'yes'
+      ? '<span class="badge badge-yes">Bypassed</span>'
+      : '<span class="badge badge-no">Defended</span>';
+    const sevBadge = `<span class="badge badge-${r.severity.toLowerCase()}">${r.severity}</span>`;
+    const shortOut = (r.output||'').slice(0,80).replace(/</g,'&lt;');
+    return `<tr>
+      <td style="font-family:var(--font-mono);font-size:0.72rem">${r.model_name}</td>
+      <td>${r.payload_type}</td>
+      <td>${sevBadge}</td>
+      <td>${sucBadge}</td>
+      <td>${r.run_number}</td>
+      <td>${r.response_time_ms}ms</td>
+      <td class="output-cell" onclick='showModal(${JSON.stringify(r.payload_name)}, ${JSON.stringify(r.input_prompt)}, ${JSON.stringify(r.output)})'
+        title="Click to expand">${shortOut}…</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('resultsTable').innerHTML = `
+    <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem">${d.total} results</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th><th>Payload Type</th><th>Severity</th>
+            <th>Outcome</th><th>Run#</th><th>Time</th><th>Output Preview</th>
+          </tr>
+        </thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>`;
+}
+
+function populateFilters(rows) {
+  const models = [...new Set(rows.map(r => r.model_name))];
+  const types  = [...new Set(rows.map(r => r.payload_type))];
+
+  const mSel = document.getElementById('filterModel');
+  const tSel = document.getElementById('filterType');
+  const mCur = mSel.value, tCur = tSel.value;
+
+  mSel.innerHTML = '<option value="">All models</option>' + models.map(m => `<option value="${m}">${m}</option>`).join('');
+  tSel.innerHTML = '<option value="">All payload types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
+
+  mSel.value = mCur; tSel.value = tCur;
+}
+
+// ── Payloads ──
+async function loadPayloads() {
+  const r = await fetch('/api/payloads');
+  const payloads = await r.json();
+  document.getElementById('payloadCount').textContent = `${payloads.length} payloads`;
+
+  document.getElementById('payloadGrid').innerHTML = payloads.map(p => {
+    const sevClass = `badge-${p.severity.toLowerCase()}`;
+    return `
+    <div class="payload-card">
+      <div class="payload-card-header">
+        <div>
+          <div class="payload-card-name">${p.name}</div>
+          <div class="payload-card-type">${p.type}</div>
+        </div>
+        <span class="badge ${sevClass}">${p.severity}</span>
+      </div>
+      <div class="payload-indicators">
+        <strong style="color:var(--text)">Success indicators:</strong>
+        ${p.indicators.map(i => `<span style="background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.2);border-radius:4px;padding:1px 6px;margin:2px;display:inline-block;color:var(--accent);font-family:var(--font-mono);font-size:0.68rem">${i}</span>`).join('')}
+      </div>
+      <div class="payload-prompt" onclick="this.classList.toggle('expanded')" title="Click to expand">
+${p.prompt_preview}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Modal ──
+function showModal(name, prompt, output) {
+  document.getElementById('modalTitle').textContent = name;
+  document.getElementById('modalBody').textContent = '=== PROMPT ===\n' + prompt + '\n\n=== OUTPUT ===\n' + output;
+  document.getElementById('outputModal').classList.add('open');
+}
+function closeModal() { document.getElementById('outputModal').classList.remove('open'); }
+document.getElementById('outputModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+// ── Init ──
+checkOllama();
+loadDashboard();
+setInterval(checkOllama, 15000);
+</script>
+</body>
+</html>
