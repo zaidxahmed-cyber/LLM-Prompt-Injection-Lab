@@ -19,9 +19,11 @@ class PromptInjectionLab:
         models: list[str] = None,
         runs_per_payload: int = RUNS_PER_PAYLOAD,
         db_path: str = DB_PATH,
+        system_prompt: str = None,
     ):
         self.models = models or MODELS
         self.runs = runs_per_payload
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
         self.client = OllamaClient()
         self.db = ResultsDB(db_path)
         self.payloads = build_payloads()
@@ -66,7 +68,7 @@ class PromptInjectionLab:
                     output, elapsed = self.client.generate(
                         model=model,
                         prompt=payload.prompt,
-                        system=SYSTEM_PROMPT,
+                        system=self.system_prompt,
                     )
                     success = detect_success(output, payload.success_indicators)
                     if success:

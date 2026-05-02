@@ -72,6 +72,7 @@ class ResultsDB:
 
     def fetch_stats(self) -> dict:
         with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
             model_rows = conn.execute("""
                 SELECT model_name,
                        COUNT(*) as total,

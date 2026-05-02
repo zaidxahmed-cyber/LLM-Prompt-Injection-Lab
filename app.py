@@ -39,14 +39,14 @@ class _QueueWriter:
         pass
 
 
-def _execute_run(run_id: str, models: list[str], runs: int):
+def _execute_run(run_id: str, models: list[str], runs: int, system_prompt: str = None):
     q = _runs[run_id]["queue"]
     _runs[run_id]["status"] = "running"
 
     old_stdout = sys.stdout
     sys.stdout = _QueueWriter(q)
     try:
-        lab = PromptInjectionLab(models=models, runs_per_payload=runs)
+        lab = PromptInjectionLab(models=models, runs_per_payload=runs, system_prompt=system_prompt)
         lab.run()
         generate_report()
         q.put("__DONE__")
@@ -157,9 +157,10 @@ def api_clear_results():
 
 @app.route("/api/run", methods=["POST"])
 def api_start_run():
-    body   = request.get_json(silent=True) or {}
-    models = body.get("models") or MODELS
-    runs   = int(body.get("runs", 5))
+    body          = request.get_json(silent=True) or {}
+    models        = body.get("models") or MODELS
+    runs          = int(body.get("runs", 5))
+    system_prompt = body.get("system_prompt") or None
 
     run_id = str(uuid.uuid4())[:8]
     with _runs_lock:
@@ -168,7 +169,7 @@ def api_start_run():
             "queue": queue.Queue(),
         }
 
-    t = threading.Thread(target=_execute_run, args=(run_id, models, runs), daemon=True)
+    t = threading.Thread(target=_execute_run, args=(run_id, models, runs, system_prompt), daemon=True)
     t.start()
 
     return jsonify({"run_id": run_id})
