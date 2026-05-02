@@ -1288,6 +1288,16 @@ async function startRun() {
 // ═══════════════════════════════════════
 // RESULTS
 // ═══════════════════════════════════════
+let _rowsCache = [];
+
+document.addEventListener('click', e => {
+  const cell = e.target.closest('.cell-output');
+  if (cell) {
+    const r = _rowsCache[parseInt(cell.dataset.idx)];
+    if (r) showModal(r.payload_name, r.input_prompt, r.output, r.success);
+  }
+});
+
 async function clearResults() {
   if (!confirm('Delete ALL results from the database? This cannot be undone.')) return;
   await fetch('/api/results/clear', { method: 'DELETE' });
@@ -1314,20 +1324,20 @@ async function loadResults() {
     return;
   }
 
-  const tbody = rows.map(r => {
+  _rowsCache = rows;
+  const tbody = rows.map((r, idx) => {
     const suc = r.success === 'yes'
       ? '<span class="badge badge-yes">Bypassed</span>'
       : '<span class="badge badge-no">Defended</span>';
     const sev = `<span class="badge badge-${r.severity.toLowerCase()}">${r.severity}</span>`;
-    const out = (r.output||'').slice(0,75).replace(/</g,'&lt;');
+    const out = (r.output||'').slice(0,80).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     return `<tr>
       <td class="cell-mono">${r.model_name}</td>
       <td style="font-size:.78rem">${r.payload_type}</td>
       <td>${sev}</td><td>${suc}</td>
       <td class="cell-mono">${r.run_number}</td>
       <td class="cell-mono">${r.response_time_ms}ms</td>
-      <td class="cell-output" onclick='showModal(${JSON.stringify(r.payload_name)},${JSON.stringify(r.input_prompt)},${JSON.stringify(r.output)})'
-          title="Click to expand">${out}…</td>
+      <td class="cell-output" data-idx="${idx}" title="Click to expand">${out}…</td>
     </tr>`;
   }).join('');
 
@@ -1378,9 +1388,16 @@ async function loadPayloads() {
 // ═══════════════════════════════════════
 // MODAL
 // ═══════════════════════════════════════
-function showModal(name, prompt, output) {
+function showModal(name, prompt, output, success) {
   document.getElementById('modalTitle').textContent = name;
-  document.getElementById('modalBody').textContent = '── PROMPT ──\n' + prompt + '\n\n── OUTPUT ──\n' + output;
+  const label = success === 'yes' ? '⚠ BYPASSED — password leaked' : '✓ DEFENDED — password not leaked';
+  const color = success === 'yes' ? '#ff2d55' : '#00ff88';
+  document.getElementById('modalBody').innerHTML =
+    `<div style="color:${color};font-family:var(--mono);font-size:.72rem;margin-bottom:.75rem;padding:.4rem .6rem;background:${color}18;border-radius:6px;border:1px solid ${color}44">${label}</div>` +
+    `<div style="color:var(--text3);font-size:.65rem;font-family:var(--mono);margin-bottom:.35rem">── PROMPT ──</div>` +
+    `<pre style="margin-bottom:.75rem;color:var(--text2)">${prompt.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>` +
+    `<div style="color:var(--text3);font-size:.65rem;font-family:var(--mono);margin-bottom:.35rem">── MODEL OUTPUT ──</div>` +
+    `<pre style="color:#6be58a">${output.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>`;
   document.getElementById('outputModal').classList.add('open');
 }
 function closeModal() { document.getElementById('outputModal').classList.remove('open'); }
