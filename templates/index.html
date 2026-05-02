@@ -766,6 +766,17 @@
           <button class="btn btn-ghost" onclick="switchTab('results')">View Results →</button>
         </div>
 
+        <!-- Progress bar -->
+        <div id="progressWrap" style="display:none;margin-top:1rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+            <span style="font-family:var(--mono);font-size:.7rem;color:var(--text3)">// attack progress</span>
+            <span style="font-family:var(--mono);font-size:.75rem;color:var(--cyan)" id="progressLabel">0 / 0</span>
+          </div>
+          <div style="height:6px;background:rgba(0,210,255,0.08);border-radius:999px;overflow:hidden;border:1px solid var(--border)">
+            <div id="progressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--cyan),var(--purple));border-radius:999px;transition:width 0.3s ease;box-shadow:0 0 8px var(--cyan)"></div>
+          </div>
+        </div>
+
         <div class="terminal-wrap" id="termWrap">
           <div class="terminal-topbar">
             <div class="t-dot t-dot-r"></div>
@@ -1138,17 +1149,35 @@ async function loadModels() {
   const r = await fetch('/api/models');
   const d = await r.json();
   const available = d.available || [];
-  const all = [...new Set([...d.defaults, ...available])];
+  const defaults  = d.defaults  || [];
 
-  document.getElementById('modelList').innerHTML = all.map(m => {
-    const ok = available.some(a => a === m || a.startsWith(m + ':'));
-    return `
+  // Map each default to its resolved available name (e.g. mistral -> mistral:latest)
+  const resolvedMap = {};
+  defaults.forEach(def => {
+    const exact = available.find(a => a === def);
+    const tagged = available.find(a => a === def + ':latest' || a.startsWith(def + ':'));
+    resolvedMap[def] = exact || tagged || null;
+  });
+
+  // Build display list: available models + uncovered defaults (not pulled)
+  const coveredAvailable = new Set(Object.values(resolvedMap).filter(Boolean));
+  const items = [
+    ...available.map(m => ({ name: m, avail: true })),
+    ...defaults
+      .filter(def => !resolvedMap[def])
+      .map(def => ({ name: def, avail: false })),
+  ];
+
+  // Deduplicate by name
+  const seen = new Set();
+  const unique = items.filter(i => seen.has(i.name) ? false : (seen.add(i.name), true));
+
+  document.getElementById('modelList').innerHTML = unique.map(({ name, avail }) => `
     <div class="model-item">
-      <input type="checkbox" id="m_${m}" value="${m}" ${ok?'checked':''} ${ok?'':'disabled'}>
-      <label for="m_${m}">${m}</label>
-      <span class="${ok?'badge badge-low':'badge badge-critical'} model-avail">${ok?'Available':'Not pulled'}</span>
-    </div>`;
-  }).join('');
+      <input type="checkbox" id="m_${name}" value="${name}" ${avail?'checked':''} ${avail?'':'disabled'}>
+      <label for="m_${name}">${name}</label>
+      <span class="${avail?'badge badge-low':'badge badge-critical'} model-avail">${avail?'● Available':'✕ Not pulled'}</span>
+    </div>`).join('');
 }
 
 // ═══════════════════════════════════════
@@ -1171,6 +1200,30 @@ function stopPolling() {
   if (document.getElementById('tab-results').classList.contains('active')) loadResults();
 }
 
+function termLine(text) {
+  const line = document.createElement('div');
+  line.style.lineHeight = '1.6';
+  const t = text.replace(/\\n/g, '\n');
+  if      (/PASS|attacked|Bypassed/i.test(t))   line.style.color = '#ff2d55';
+  else if (/HOLD|defended|Defended/i.test(t))   line.style.color = '#00ff88';
+  else if (/\[OK\]/i.test(t))                   line.style.color = '#00d2ff';
+  else if (/\[SKIP\]|NOT/i.test(t))             line.style.color = '#ffd60a';
+  else if (/ERROR|error/i.test(t))              line.style.color = '#ff2d55';
+  else if (/---.*---/.test(t))                  line.style.color = '#8b5cf6';
+  else if (/===/.test(t))                       line.style.color = '#00d2ff';
+  else if (/DONE|complete/i.test(t))            line.style.color = '#00ff88';
+  else                                          line.style.color = '#94a3b8';
+  line.textContent = t;
+  return line;
+}
+
+function updateProgress(done, total) {
+  if (!total) return;
+  const pct = Math.round(done / total * 100);
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = `${done} / ${total}  (${pct}%)`;
+}
+
 async function startRun() {
   const models = [...document.querySelectorAll('#modelList input:checked')].map(i => i.value);
   if (!models.length) { alert('Select at least one model.'); return; }
@@ -1183,9 +1236,19 @@ async function startRun() {
   const termWrap = document.getElementById('termWrap');
   const terminal = document.getElementById('terminal');
   termWrap.classList.add('active');
-  terminal.textContent = '';
+  terminal.innerHTML = '';
+
+  const progWrap = document.getElementById('progressWrap');
+  progWrap.style.display = 'block';
+  document.getElementById('progressBar').style.width = '0%';
+  document.getElementById('progressLabel').textContent = 'Starting…';
+
   const status = document.getElementById('runStatus');
   status.textContent = 'Running'; status.className = 'run-status running';
+
+  terminal.appendChild(termLine('// Initializing attack sequence…'));
+  terminal.appendChild(termLine('// Note: first request may take 30-60s while Ollama loads the model into memory.'));
+  terminal.appendChild(termLine(''));
 
   const resp = await fetch('/api/run', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1200,10 +1263,16 @@ async function startRun() {
       es.close(); stopPolling();
       btn.disabled = false; btn.innerHTML = '⚡ &nbsp;Launch Attack Run';
       status.textContent = 'Done'; status.className = 'run-status done';
-      terminal.textContent += '\n[✓] Run complete — check Dashboard for results.\n';
+      updateProgress(100, 100);
+      document.getElementById('progressBar').style.width = '100%';
+      terminal.appendChild(termLine('\n[✓] Run complete — check Dashboard for results.'));
+      terminal.scrollTop = terminal.scrollHeight;
       return;
     }
-    terminal.textContent += e.data.replace(/\\n/g, '\n') + '\n';
+    const text = e.data.replace(/\\n/g, '\n');
+    const m = text.match(/\[\s*(\d+)\/(\d+)\]/);
+    if (m) updateProgress(parseInt(m[1]), parseInt(m[2]));
+    terminal.appendChild(termLine(text));
     terminal.scrollTop = terminal.scrollHeight;
   };
   es.onerror = () => {

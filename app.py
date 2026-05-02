@@ -184,12 +184,23 @@ def api_run_stream(run_id: str):
     q: queue.Queue = run["queue"]
 
     def event_stream():
+        consecutive_empty = 0
         while True:
             try:
-                msg = q.get(timeout=30)
+                msg = q.get(timeout=25)
+                consecutive_empty = 0
             except queue.Empty:
-                yield "data: [TIMEOUT — no output for 30s]\n\n"
-                break
+                yield ": keepalive\n\n"
+                consecutive_empty += 1
+                if consecutive_empty >= 12:
+                    run_status = _runs[run_id].get("status")
+                    if run_status in ("done", "error"):
+                        yield "data: __DONE__\n\n"
+                    else:
+                        yield "data: [TIMEOUT — no output for 5 min, run may have stalled]\n\n"
+                        yield "data: __DONE__\n\n"
+                    break
+                continue
 
             if msg == "__DONE__":
                 yield "data: __DONE__\n\n"
