@@ -8,7 +8,6 @@ import sys
 import threading
 import queue
 import uuid
-import json
 from flask import Flask, render_template, jsonify, request, Response, stream_with_context
 
 from lab import (
@@ -139,6 +138,17 @@ def api_results():
     total = len(rows)
     rows = rows[offset: offset + limit]
     return jsonify({"total": total, "rows": rows})
+
+
+# ---------------------------------------------------------------------------
+# API — results management
+# ---------------------------------------------------------------------------
+
+@app.route("/api/results/clear", methods=["DELETE"])
+def api_clear_results():
+    db = ResultsDB(DB_PATH)
+    db.clear_all()
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------

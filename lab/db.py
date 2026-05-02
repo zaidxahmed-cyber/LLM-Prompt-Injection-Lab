@@ -65,6 +65,11 @@ class ResultsDB:
             rows = conn.execute("SELECT * FROM results ORDER BY id").fetchall()
             return [dict(r) for r in rows]
 
+    def clear_all(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM results")
+            conn.commit()
+
     def fetch_stats(self) -> dict:
         with sqlite3.connect(self.db_path) as conn:
             model_rows = conn.execute("""

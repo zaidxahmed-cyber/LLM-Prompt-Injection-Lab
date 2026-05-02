@@ -793,7 +793,10 @@
       <div class="tab" id="tab-results">
         <div class="sec-header">
           <div class="sec-title">Raw Results</div>
-          <button class="btn btn-ghost" style="padding:.4rem .9rem;font-size:.75rem" onclick="loadResults()">↺ Refresh</button>
+          <div style="display:flex;gap:.5rem">
+            <button class="btn btn-ghost" style="padding:.4rem .9rem;font-size:.75rem" onclick="loadResults()">↺ Refresh</button>
+            <button class="btn btn-ghost" style="padding:.4rem .9rem;font-size:.75rem;color:var(--red);border-color:rgba(255,45,85,0.3)" onclick="clearResults()">🗑 Clear All</button>
+          </div>
         </div>
         <div class="filter-bar">
           <select id="filterModel"   onchange="loadResults()"><option value="">All models</option></select>
@@ -1285,6 +1288,13 @@ async function startRun() {
 // ═══════════════════════════════════════
 // RESULTS
 // ═══════════════════════════════════════
+async function clearResults() {
+  if (!confirm('Delete ALL results from the database? This cannot be undone.')) return;
+  await fetch('/api/results/clear', { method: 'DELETE' });
+  loadResults();
+  loadDashboard();
+}
+
 async function loadResults() {
   const model   = document.getElementById('filterModel').value;
   const type    = document.getElementById('filterType').value;

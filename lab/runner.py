@@ -91,7 +91,7 @@ class PromptInjectionLab:
                         f"  [{done:>4}/{total}] {payload.name:<40} "
                         f"run {run_num}/{self.runs}  {status}  ({elapsed}ms)"
                     )
-                    time.sleep(random.uniform(0.3, 0.8))
+                    time.sleep(random.uniform(0.05, 0.15))
 
                 rate = successes / self.runs * 100
                 print(
