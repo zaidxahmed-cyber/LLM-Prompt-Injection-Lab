@@ -275,6 +275,5 @@ This provides a quantitative, reproducible metric for evaluating a model's resis
 
 **Zaid Ahmed**
 
-GitHub: [@ZaidAhmed](https://github.com/ZaidAhmed)
 Email: zaidahmed78654@gmail.com
 
